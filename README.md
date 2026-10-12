@@ -62,6 +62,29 @@ functionality (all APIs, the Python/Selenium engine, validation, and real data e
 
 ## Quick start
 
+**Easiest on Windows — Docker** (single install, no PATH/tooling issues):
+
+```powershell
+# 1. Install Docker Desktop: https://www.docker.com/products/docker-desktop/
+#    (installer sets up WSL2 automatically; reboot when asked)
+
+# 2. Get the repo — clone OR just download the ZIP (Code → Download ZIP)
+git clone https://github.com/playbeatdigitalworld-png/trafficlab.git
+cd trafficlab
+
+# 3. Build + run everything (dashboard + engine + Python + Chromium):
+docker compose up -d --build
+
+# 4. Open http://localhost:3000  →  "Engine online"
+```
+
+Run history persists in `./db` (mounted into the container). The Cloudflare
+Tunnel can also run in Docker — see `docker-compose.yml` comments and
+*Deployment → Option D*. No git on the machine? Download the repo ZIP from
+GitHub and skip `git clone` entirely.
+
+**Without Docker** (Linux / macOS / Windows native):
+
 **Prerequisites:** Linux or macOS, `bun`, `python3` (3.8+), `curl`.
 **Windows:** use `setup.ps1` + `start-trafficlab.ps1` instead (see *Windows* below).
 
@@ -187,20 +210,21 @@ Done: `https://your-domain.com` with auto-renewed TLS, live feed at
 `/engine-socket/*`, both processes auto-restarting on crash/reboot.
 
 <details>
-<summary><b>Option B — Docker on Railway / Render / Fly.io</b> (click)</summary>
+<summary><b>Option B — Docker on Railway / Render / Fly.io / your own machine</b> (click)</summary>
 
-If you prefer PaaS over raw VPS: these platforms **do** allow long-running containers.
-`deploy/Dockerfile` builds the whole system (bun + python + distro chromium) in one image.
+These platforms allow long-running containers, and the repo now ships a complete
+all-in-one image (`deploy/Dockerfile` + root `docker-compose.yml`): bun + python +
+distro chromium in one container, SQLite persisted via a `./db` volume.
 
-- **Fly.io** — `fly launch --no-deploy` (set internal port 3000) → `fly deploy`. Pay-as-you-go,
-  a tiny shared-CPU VM lands around $3–5/mo. Attach a volume at `/data` and set
-  `DATABASE_URL=file:/data/custom.db` if you want history to survive deploys.
-- **Railway** — create project → "Deploy from repo" with the Dockerfile; ~$5 hobby plan.
+- **Your own machine** — `docker compose up -d --build` (see Quick start). Works on
+  Windows via Docker Desktop + WSL2, including the Cloudflare Tunnel in the same
+  compose file (`--profile tunnel`).
+- **Fly.io** — `fly launch --no-deploy` (set internal port 3000) → `fly deploy`. Attach
+  a volume at `/data` and set `DATABASE_URL=file:/data/custom.db` for persistent history.
+- **Railway** — create project → "Deploy from repo"; ~$5 hobby plan.
 - **Render** — new *Web Service* → Docker runtime; note the free tier sleeps on idle
   (fine for the dashboard, bad for a traffic engine mid-run).
 
-The Dockerfile is provided as a tested-structure template — expect minor adjustments
-(e.g. volume paths, platform quirks) per host.
 </details>
 
 <details>

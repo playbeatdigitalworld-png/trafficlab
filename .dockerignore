@@ -1,0 +1,18 @@
+# keep the build context small & the image clean
+node_modules
+.next
+.git
+db
+*.log
+*.md
+!README.md
+.env
+.env.*
+!.env.example
+engine/venv
+engine/drivers
+engine/__pycache__
+engine/**/__pycache__
+download
+tmp*
+deploy/cloudflared-config.example.yml.bak

@@ -1,0 +1,41 @@
+# ============================================================================
+# TrafficLab — Docker Compose (works on Windows / macOS / Linux)
+#
+#   docker compose up -d --build      # start dashboard + engine
+#   → http://localhost:3000           ("Engine online")
+#
+# Optional: run the Cloudflare Tunnel in Docker too (zero host installs
+# beyond Docker Desktop):
+#   1. create tunnel credentials (one-time, see README → Docker):
+#        docker compose run --rm --publish 8181:8181 cloudflared tunnel login
+#        docker compose run --rm cloudflared tunnel create trafficlab
+#        docker compose run --rm cloudflared tunnel route dns trafficlab trafficlab.creedbixby.lat
+#   2. copy deploy/cloudflared-config.example.yml to ~/.cloudflared/config.yml,
+#      set the tunnel UUID, and fix the credentials-file path to
+#      /home/cloudflared/.cloudflared/<UUID>.json (container path)
+#   3. docker compose --profile tunnel up -d
+#   → https://trafficlab.creedbixby.lat
+# ============================================================================
+
+services:
+  trafficlab:
+    build: .
+    container_name: trafficlab
+    ports:
+      - "3000:3000"   # dashboard (and tunnel /engine-socket target on host)
+      - "3003:3003"   # engine socket.io (for host-run cloudflared)
+    volumes:
+      - ./db:/app/db  # persist SQLite run history
+    restart: unless-stopped
+
+  # optional — tunnel inside Docker instead of the host MSI
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: trafficlab-tunnel
+    command: tunnel --config /home/cloudflared/.cloudflared/config.yml run
+    volumes:
+      - "${USERPROFILE}/.cloudflared:/home/cloudflared/.cloudflared"   # Windows
+      # - "${HOME}/.cloudflared:/home/cloudflared/.cloudflared"        # macOS/Linux
+    profiles: ["tunnel"]
+    depends_on: [trafficlab]
+    restart: unless-stopped
