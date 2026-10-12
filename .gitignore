@@ -1,0 +1,38 @@
+# dependencies
+node_modules/
+
+# next.js
+/.next/
+/out/
+build/
+
+# production standalone output
+.next/standalone/
+
+# env files (keep .env.example)
+.env
+.env.*
+!.env.example
+
+# database (runtime data — never commit)
+db/*.db
+db/*.db-journal
+
+# logs
+*.log
+
+# misc
+.DS_Store
+*.pem
+*.tsbuildinfo
+next-env.d.ts
+.vercel
+
+# --- python engine ---
+engine/venv/
+engine/drivers/
+engine/__pycache__/
+engine/**/__pycache__/
+engine/chromedriver.exe
+engine/*.log
+engine/*.png

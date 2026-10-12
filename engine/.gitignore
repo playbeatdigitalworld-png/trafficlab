@@ -1,0 +1,17 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.egg-info/
+
+# Local browser binaries (300MB+ — fetch with setup_drivers.sh instead)
+drivers/
+
+# Logs / runtime
+ghostdriver.log
+nohup.out
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db

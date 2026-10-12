@@ -1,0 +1,39 @@
+# ============================================================================
+# TrafficLab — production reverse proxy (Caddy ≥ 2.6)
+#
+# Caddy issues and renews Let's Encrypt certificates automatically — just
+# point your domain's DNS A record at this server first.
+#
+# Install:  https://caddyserver.com/docs/install (Debian/Ubuntu repo available)
+# Usage:    copy to /etc/caddy/Caddyfile, edit the domain, then:
+#           sudo systemctl reload caddy
+# ============================================================================
+
+your-domain.com {
+	# --- OPTIONAL but strongly recommended: basic auth ----------------------
+	# TrafficLab ships without user accounts. If you expose it to the public
+	# internet, protect it. Generate a hash with:  caddy hash-password
+	#
+	# basic_auth {
+	#     admin $2a$14$REPLACE_WITH_YOUR_HASH
+	# }
+
+	# --- live socket.io feed from engine-service ----------------------------
+	# Strips /engine-socket and forwards to socket.io's default path on :3003.
+	# The dashboard must be built for this: `bun run build:prod`
+	handle_path /engine-socket/* {
+		reverse_proxy 127.0.0.1:3003
+	}
+
+	# --- everything else -> Next.js dashboard -------------------------------
+	reverse_proxy 127.0.0.1:3000
+}
+
+# ---------------------------------------------------------------------------
+# Local-only variant (no domain, no TLS — reach via SSH tunnel):
+#   :8080 {
+#       bind 127.0.0.1
+#       handle_path /engine-socket/* { reverse_proxy 127.0.0.1:3003 }
+#       reverse_proxy 127.0.0.1:3000
+#   }
+# Then:  ssh -L 8080:127.0.0.1:8080 user@server   and open http://localhost:8080

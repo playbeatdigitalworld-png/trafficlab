@@ -1,0 +1,10 @@
+# Works with Python 3.8 - 3.12
+# (The original 2017 pins — selenium 3.3.1, pyparsing 2.2.0, packaging 16.8 —
+#  crash on modern Python; use the ranges below instead.)
+selenium>=4.20,<5
+PyAutoGUI>=0.9.54
+pillow>=10.0
+appdirs>=1.4.3
+six>=1.16.0
+pyparsing>=3.0
+packaging>=23.0

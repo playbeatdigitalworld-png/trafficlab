@@ -1,0 +1,28 @@
+# ============================================================================
+# TrafficLab dashboard — systemd unit
+# Install:
+#   sudo cp deploy/trafficlab.service /etc/systemd/system/
+#   # edit WorkingDirectory to your clone path
+#   sudo systemctl daemon-reload && sudo systemctl enable --now trafficlab
+# ============================================================================
+
+[Unit]
+Description=TrafficLab dashboard (Next.js standalone)
+After=network.target
+
+[Service]
+Type=simple
+User=trafficlab
+Group=trafficlab
+WorkingDirectory=/opt/trafficlab
+Environment=NODE_ENV=production
+Environment=PORT=3000
+Environment=HOSTNAME=127.0.0.1
+# Keep the same value used by ./setup.sh (.env):
+Environment=DATABASE_URL=file:/opt/trafficlab/db/custom.db
+ExecStart=/usr/bin/bun /opt/trafficlab/.next/standalone/server.js
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
