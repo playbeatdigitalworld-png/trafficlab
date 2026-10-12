@@ -63,6 +63,7 @@ functionality (all APIs, the Python/Selenium engine, validation, and real data e
 ## Quick start
 
 **Prerequisites:** Linux or macOS, `bun`, `python3` (3.8+), `curl`.
+**Windows:** use `setup.ps1` + `start-trafficlab.ps1` instead (see *Windows* below).
 
 ```bash
 git clone <this-repo> trafficlab && cd trafficlab
@@ -83,11 +84,30 @@ Prefer production mode?
 
 ```bash
 bun run build:prod && bun run start          # dashboard :3000
-cd mini-services/engine-service && bun index.ts   # engine-service
+cd mini-services/engine-service \
+  && SOCK_PATH=/engine-socket/socket.io bun index.ts   # engine-service
 ```
+
+> Local-only (no reverse proxy): just `bun run dev` for both services — the browser
+> auto-detects the missing proxy and falls back to the engine's direct `localhost:3003`
+> (same for pre-deploy checks of `http://localhost:3000` after `build:prod`).
+> Behind Caddy / Cloudflare Tunnel, `SOCK_PATH=/engine-socket/socket.io` is required.
 
 > No `bun`? The dashboard also builds with npm (`npm i && npm run build:prod && node .next/standalone/server.js`),
 > but the engine-service uses Bun APIs (`Bun.spawn`) — bun is required on the engine host.
+
+### Windows
+
+```powershell
+winget install Git.Git ; winget install Oven-sh.Bun ; winget install Python.Python.3.12   # + Chrome
+git clone https://github.com/playbeatdigitalworld-png/trafficlab.git ; cd trafficlab
+powershell -ExecutionPolicy Bypass -File .\setup.ps1     # deps + .env + venv (uses your Chrome)
+bun run build:prod
+.\start-trafficlab.ps1                                    # dashboard + engine in two windows
+```
+
+Selenium Manager auto-downloads the matching chromedriver for your installed Chrome —
+no manual driver setup. Stopping runs uses `taskkill /T` (full process tree).
 
 ## Configuration
 
@@ -108,7 +128,7 @@ Build-time (browser) variables — **must be set when building the dashboard**:
 |---|---|
 | `NEXT_PUBLIC_ENGINE_SOCK_PATH=/engine-socket/socket.io` | self-hosted behind the provided Caddyfile (`build:prod` sets it) |
 | `NEXT_PUBLIC_ENGINE_SOCK_URL=https://engine.example.com` | engine on a dedicated origin |
-| *(unset)* | sandbox preview / direct `:3003` access |
+| *(unset)* | sandbox preview — or any local/offline setup: the client auto-falls back to `http://localhost:3003` |
 
 ---
 
@@ -201,21 +221,82 @@ specifically want Vercel's CDN/preview workflow.
 </details>
 
 <details>
-<summary><b>Option D — Your own machine + Cloudflare Tunnel</b> (free)</summary>
+<summary><b>Option D — Your own machine + Cloudflare Tunnel</b> (free, full walkthrough)</summary>
 
-The stack already runs headless. Keep it on your PC/server and expose it securely:
+Run the whole stack on your own PC/server and expose it at a public HTTPS URL with
+**no open ports, no public IP, no TLS certificates to manage**. The domain must be
+on Cloudflare (free plan is enough — see step 1). Everything stays on your machine;
+SQLite needs no external database.
+
+**Step 1 — put the domain on Cloudflare** *(skip if DNS is already there)*
+
+1. Create a free account at [dash.cloudflare.com](https://dash.cloudflare.com) → *Add a site* →
+   choose the **Free** plan.
+2. Cloudflare shows two nameservers (e.g. `anna.ns.cloudflare.com`). At your registrar
+   (Namecheap / GoDaddy / Porkbun / …) replace the current nameservers with them.
+3. Wait for the status to turn **Active** (usually minutes, up to 24 h).
+
+**Step 2 — run TrafficLab locally**
 
 ```bash
-# cloudflared (free, no open ports, no public IP needed)
-cloudflared tunnel login
-cloudflared tunnel create trafficlab
-cloudflared tunnel route dns trafficlab lab.your-domain.com
-cloudflared tunnel run --url http://localhost:3000 trafficlab
+git clone <this-repo> trafficlab && cd trafficlab
+./setup.sh
+bun run build:prod          # bakes the /engine-socket socket path into the app
 ```
 
-Route `/engine-socket/*` in the Cloudflare dashboard (or run a local Caddy with the
-`handle_path` block) and build with `NEXT_PUBLIC_ENGINE_SOCK_PATH`. Caveat: sessions stop
-when your machine sleeps — fine for experiments, not for 24/7.
+Terminal 1 — dashboard:
+
+```bash
+DATABASE_URL=file:$PWD/db/custom.db PORT=3000 HOSTNAME=127.0.0.1 \
+  bun .next/standalone/server.js
+```
+
+Terminal 2 — engine-service (note `SOCK_PATH`, required for the tunnel):
+
+```bash
+cd mini-services/engine-service
+SOCK_PATH=/engine-socket/socket.io ENGINE_DIR=../../engine bun index.ts
+```
+
+Check `http://localhost:3000` locally before continuing.
+
+**Step 3 — install cloudflared**
+
+| OS | Command |
+|---|---|
+| Linux (Debian/Ubuntu) | `curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb && sudo dpkg -i cloudflared.deb` |
+| macOS | `brew install cloudflared` |
+| Windows | `winget install Cloudflare.cloudflared` |
+
+**Step 4 — create the tunnel**
+
+```bash
+cloudflared tunnel login                      # opens browser → pick your domain
+cloudflared tunnel create trafficlab          # prints a UUID
+cloudflared tunnel route dns trafficlab lab.your-domain.com   # auto-creates the DNS record
+```
+
+**Step 5 — config + run** (cloudflared can't strip path prefixes, so routing is explicit)
+
+Copy `deploy/cloudflared-config.example.yml` → `~/.cloudflared/config.yml`
+(Windows: `%USERPROFILE%\.cloudflared\config.yml`), replace `<TUNNEL-UUID>` in both
+lines, then:
+
+```bash
+cloudflared tunnel run trafficlab
+```
+
+Open **https://lab.your-domain.com** — dashboard + live feed + green "Engine online".
+
+**Step 6 — keep it alive**
+
+- Linux server: `deploy/cloudflared.service` systemd unit (plus the two TrafficLab units).
+- macOS: `brew services start cloudflared`.
+- Windows: `cloudflared service install` (runs as a Windows service).
+
+Caveats: sessions stop when the machine sleeps/reboots; your machine's upload speed
+is the visitors' download speed. Also consider enabling Cloudflare Access
+(Zero Trust → free for up to 50 users) to password-protect the URL.
 </details>
 
 ### 🌐 Custom domain

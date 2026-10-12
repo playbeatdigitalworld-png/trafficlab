@@ -20,6 +20,9 @@ ExecStart=/usr/bin/bun index.ts
 Environment=NODE_ENV=production
 Environment=ENGINE_DIR=/opt/trafficlab/engine
 Environment=DATABASE_URL=file:/opt/trafficlab/db/custom.db
+# Socket.io serving path — MUST match the reverse-proxy /engine-socket route
+# (see deploy/Caddyfile or deploy/cloudflared-config.example.yml)
+Environment=SOCK_PATH=/engine-socket/socket.io
 Restart=always
 RestartSec=3
 

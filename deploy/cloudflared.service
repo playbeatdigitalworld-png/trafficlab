@@ -1,0 +1,26 @@
+# ============================================================================
+# TrafficLab — cloudflared systemd unit (Linux)
+# Keeps the Cloudflare Tunnel alive 24/7 on your own machine.
+#
+# Install:
+#   1. Complete the tunnel setup (deploy/cloudflared-config.example.yml)
+#   2. sudo mkdir -p /etc/cloudflared
+#      sudo cp ~/.cloudflared/config.yml /etc/cloudflared/
+#      sudo cp ~/.cloudflared/<TUNNEL-UUID>.json /etc/cloudflared/
+#   3. sudo cp deploy/cloudflared.service /etc/systemd/system/
+#   4. sudo systemctl daemon-reload && sudo systemctl enable --now cloudflared
+# ============================================================================
+
+[Unit]
+Description=TrafficLab Cloudflare Tunnel
+After=network.target trafficlab.service engine-service.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/cloudflared --config /etc/cloudflared/config.yml tunnel run
+Restart=always
+RestartSec=5
+LimitNOFILE=8192
+
+[Install]
+WantedBy=multi-user.target

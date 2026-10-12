@@ -3,9 +3,18 @@
 /**
  * useEngineSocket — live layer for TrafficLab.
  *
- * Connects to the engine-service mini-service (socket.io at /?XTransformPort=3003)
- * and exposes: connection state, 1s-tick stats, a rolling log feed and
- * run lifecycle events.
+ * Connects to the engine-service socket.io layer and exposes: connection
+ * state, 1s-tick stats, a rolling log feed and run lifecycle events.
+ *
+ * Connection strategy (first that works wins):
+ *  1. NEXT_PUBLIC_ENGINE_SOCK_URL (build-time)     — dedicated engine origin
+ *  2. NEXT_PUBLIC_ENGINE_SOCK_PATH (build-time)    — same-origin reverse proxy
+ *     (`bun run build:prod` bakes /engine-socket/socket.io)
+ *  3. /?XTransformPort=3003                        — sandbox preview gateway
+ *  Self-healing: if the chosen target cannot connect, the hook falls back to
+ *  the engine directly on http://localhost:3003 (local dev / pre-deploy
+ *  checks), then keeps alternating until something connects. Remote viewers
+ *  simply see "Engine offline" while the tunnel is down.
  */
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { io, type Socket } from 'socket.io-client'
@@ -44,6 +53,7 @@ export interface RunEndedEvent {
 }
 
 const MAX_LOGS = 300
+const DIRECT_ENGINE = 'http://localhost:3003'
 
 export function useEngineSocket() {
   const socketRef = useRef<Socket | null>(null)
@@ -62,48 +72,88 @@ export function useEngineSocket() {
   const clearLogs = useCallback(() => setLogs([]), [])
 
   useEffect(() => {
-    // Connection target for the engine socket layer:
-    //  a) Same-origin reverse proxy (recommended for self-hosting): proxy
-    //     <site>/engine-socket/* to 127.0.0.1:3003 and build with
-    //     NEXT_PUBLIC_ENGINE_SOCK_PATH=/engine-socket/socket.io
-    //  b) Dedicated engine origin: build with NEXT_PUBLIC_ENGINE_SOCK_URL=https://engine.example.com
-    //  c) Sandbox preview (default): gateway convention /?XTransformPort=3003
     const SOCK_URL  = process.env.NEXT_PUBLIC_ENGINE_SOCK_URL ?? ''
     const SOCK_PATH = process.env.NEXT_PUBLIC_ENGINE_SOCK_PATH ?? ''
-    const socket = (SOCK_URL || SOCK_PATH)
-      ? io(SOCK_URL || undefined, {
-          path: SOCK_PATH || '/socket.io',
-          transports: ['websocket', 'polling'],
-          forceNew: true,
-          reconnection: true,
-          reconnectionAttempts: 10,
-          reconnectionDelay: 1500,
-        })
-      : io('/?XTransformPort=3003', {
-          transports: ['websocket', 'polling'],
-          forceNew: true,
-          reconnection: true,
-          reconnectionAttempts: 10,
-          reconnectionDelay: 1500,
-        })
-    socketRef.current = socket
 
-    socket.on('connect', () => setConnected(true))
-    socket.on('disconnect', () => setConnected(false))
-    socket.on('stats', (payload: LiveStats) => setStats(payload))
-    socket.on('log', (entry: LogEntry) => {
-      setLogs(prev => {
-        const next = [...prev, entry]
-        return next.length > MAX_LOGS ? next.slice(next.length - MAX_LOGS) : next
+    const OPTS = {
+      // polling first: fails fast (and retries) when a target is unreachable,
+      // then upgrades to websocket after the handshake — websocket-first hangs
+      // silently on origins without a ws endpoint and stalls self-healing.
+      transports: ['polling', 'websocket'] as ('polling' | 'websocket')[],
+      forceNew: true,
+      reconnection: true,
+      reconnectionAttempts: 6,
+      reconnectionDelay: 1500,
+    }
+
+    let disposed = false
+    let current: Socket | null = null
+
+    const attach = (s: Socket) => {
+      s.on('connect', () => setConnected(true))
+      s.on('disconnect', () => setConnected(false))
+      s.on('stats', (payload: LiveStats) => setStats(payload))
+      s.on('log', (entry: LogEntry) => {
+        setLogs(prev => {
+          const next = [...prev, entry]
+          return next.length > MAX_LOGS ? next.slice(next.length - MAX_LOGS) : next
+        })
       })
-    })
-    socket.on('run-ended', (e: RunEndedEvent) => {
-      handlersRef.current.forEach(fn => fn(e))
-    })
+      s.on('run-ended', (e: RunEndedEvent) => {
+        handlersRef.current.forEach(fn => fn(e))
+      })
+    }
+
+    const swap = (next: Socket) => {
+      if (current) {
+        current.io.off()
+        current.removeAllListeners()
+        current.close()
+      }
+      current = next
+      socketRef.current = next
+      attach(next)
+    }
+
+    // primary target — build-time configured, else the sandbox gateway convention
+    const startPrimary = () => {
+      if (disposed) return
+      const s: Socket = SOCK_URL
+        ? io(SOCK_URL, { ...OPTS, path: SOCK_PATH || '/socket.io' })
+        : SOCK_PATH
+          ? io({ ...OPTS, path: SOCK_PATH })
+          : io('/?XTransformPort=3003', OPTS)
+      swap(s)
+      // self-heal: after 2 failed attempts, try the engine directly
+      s.io.on('reconnect_attempt', (attempt: number) => {
+        if (disposed) return
+        if (attempt >= 2) startDirect()
+      })
+    }
+
+    // fallback — engine on this machine (local dev / pre-deploy local check).
+    // Uses the same path the engine is serving under (SOCK_PATH), or '/' in
+    // plain local dev mode.
+    const startDirect = () => {
+      if (disposed) return
+      const s = io(DIRECT_ENGINE, { ...OPTS, path: SOCK_PATH || '/' })
+      swap(s)
+      // unreachable too (remote viewer, tunnel down) — cycle back to primary
+      s.io.on('reconnect_failed', () => {
+        if (disposed) return
+        setTimeout(() => startPrimary(), 5000)
+      })
+    }
+
+    startPrimary()
 
     return () => {
-      socket.removeAllListeners()
-      socket.close()
+      disposed = true
+      if (current) {
+        current.io.off()
+        current.removeAllListeners()
+        current.close()
+      }
       socketRef.current = null
     }
   }, [])

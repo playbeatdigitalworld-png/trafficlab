@@ -1,0 +1,46 @@
+# ============================================================================
+# TrafficLab — Cloudflare Tunnel config (cloudflared)
+#
+# Runs TrafficLab on YOUR machine and exposes it at a public HTTPS hostname
+# with no open ports, no public IP and no TLS certificates to manage.
+#
+# Quick path (interactive, no config file needed):
+#   cloudflared tunnel login
+#   cloudflared tunnel create trafficlab
+#   cloudflared tunnel route dns trafficlab lab.your-domain.com
+#   cloudflared tunnel run trafficlab \
+#     --url http://localhost:3000 \
+#     --http-host-header lab.your-domain.com
+#   ...but the quick path can't route /engine-socket to :3003, so for
+#   TrafficLab use THIS config file instead (full guide in README.md).
+#
+# Setup:
+#   1. cloudflared tunnel login                        (pick your domain)
+#   2. cloudflared tunnel create trafficlab            (note the UUID)
+#   3. cloudflared tunnel route dns trafficlab lab.your-domain.com
+#   4. copy this file to ~/.cloudflared/config.yml (Linux/macOS)
+#      or %USERPROFILE%\.cloudflared\config.yml (Windows)
+#      and replace <TUNNEL-UUID> below
+#   5. cloudflared tunnel run trafficlab
+#
+# cloudflared NEVER strips path prefixes, so /engine-socket/* arrives at
+# engine-service unchanged — engine-service must run with
+# SOCK_PATH=/engine-socket/socket.io for this to work.
+# ============================================================================
+
+tunnel: <TUNNEL-UUID>
+credentials-file: /home/YOU/.cloudflared/<TUNNEL-UUID>.json
+# Windows: credentials-file: C:\Users\YOU\.cloudflared\<TUNNEL-UUID>.json
+
+ingress:
+  # live socket.io/websocket feed -> engine-service
+  - hostname: lab.your-domain.com
+    path: ^/engine-socket/.*
+    service: http://localhost:3003
+
+  # everything else -> Next.js dashboard
+  - hostname: lab.your-domain.com
+    service: http://localhost:3000
+
+  # required catch-all
+  - service: http_status:404

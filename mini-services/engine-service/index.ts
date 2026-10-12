@@ -30,9 +30,18 @@ const ENGINE_DIR = process.env.ENGINE_DIR
   ?? (existsSync('/home/z/my-project/Website-Traffic-Generator-With-GUI-main/venv')
       ? '/home/z/my-project/Website-Traffic-Generator-With-GUI-main'
       : resolve(__dirname, '../../engine'))
-const PY          = `${ENGINE_DIR}/venv/bin/python`
-const MAIN        = `${ENGINE_DIR}/main.py`
-const PROXY_FILE  = `${ENGINE_DIR}/proxies.txt`
+
+// venv python differs by OS: venv/bin/python (Linux/macOS) vs venv\Scripts\python.exe (Windows)
+function findVenvPython(dir: string): string {
+  const posix = resolve(dir, 'venv/bin/python')
+  if (existsSync(posix)) return posix
+  const win = resolve(dir, 'venv/Scripts/python.exe')
+  if (existsSync(win)) return win
+  return posix
+}
+const PY          = findVenvPython(ENGINE_DIR)
+const MAIN        = resolve(ENGINE_DIR, 'main.py')
+const PROXY_FILE  = resolve(ENGINE_DIR, 'proxies.txt')
 // pkill-safe escaped form of ENGINE_DIR (used for orphan cleanup)
 const ENGINE_DIR_PAT = ENGINE_DIR.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
@@ -91,6 +100,16 @@ function killTree(run: RunState) {
   const proc = run.proc
   if (!proc || proc.exitCode !== null || proc.signalCode !== null) return
   const pid = proc.pid
+  const isWin = process.platform === 'win32'
+
+  if (isWin) {
+    // Windows has no process groups / negative PIDs — kill the whole tree
+    // (python + chromedriver + chrome) via taskkill; silent when already gone.
+    try { Bun.spawn(['taskkill', '/PID', String(pid), '/T', '/F'], { stdout: 'ignore', stderr: 'ignore' }) } catch { /* noop */ }
+    try { proc.kill() } catch { /* already gone */ }
+    return
+  }
+
   try {
     // spawn({ detached: true }) => child leads its own session, so -pid = pgid
     if (pid) process.kill(-pid, 'SIGTERM')
@@ -371,8 +390,13 @@ const restServer = createServer((req, res) => {
 })
 
 // -------------------------------------------------------------- socket.io ---
+// Path the socket.io layer serves under.
+//  '/'  (default) — sandbox gateway convention (/?XTransformPort=3003)
+//  '/engine-socket/socket.io' — self-hosted: one public hostname with
+//      /engine-socket/* routed to this service (Caddy `handle` or cloudflared
+//      ingress rule — neither must strip the prefix). Set via SOCK_PATH env.
 const io = new Server(httpServer, {
-  path: '/',
+  path: process.env.SOCK_PATH ?? '/',
   cors: { origin: '*', methods: ['GET', 'POST'] },
   pingTimeout: 60_000,
   pingInterval: 25_000,

@@ -10,30 +10,32 @@
 # ============================================================================
 
 your-domain.com {
-	# --- OPTIONAL but strongly recommended: basic auth ----------------------
-	# TrafficLab ships without user accounts. If you expose it to the public
-	# internet, protect it. Generate a hash with:  caddy hash-password
-	#
-	# basic_auth {
-	#     admin $2a$14$REPLACE_WITH_YOUR_HASH
-	# }
+        # --- OPTIONAL but strongly recommended: basic auth ----------------------
+        # TrafficLab ships without user accounts. If you expose it to the public
+        # internet, protect it. Generate a hash with:  caddy hash-password
+        #
+        # basic_auth {
+        #     admin $2a$14$REPLACE_WITH_YOUR_HASH
+        # }
 
-	# --- live socket.io feed from engine-service ----------------------------
-	# Strips /engine-socket and forwards to socket.io's default path on :3003.
-	# The dashboard must be built for this: `bun run build:prod`
-	handle_path /engine-socket/* {
-		reverse_proxy 127.0.0.1:3003
-	}
+        # --- live socket.io feed from engine-service ----------------------------
+        # IMPORTANT: `handle` (NOT handle_path) — the prefix must NOT be stripped.
+        # engine-service must run with SOCK_PATH=/engine-socket/socket.io (the
+        # provided systemd unit sets it) and the dashboard must be built with
+        # `bun run build:prod`.
+        handle /engine-socket/* {
+                reverse_proxy 127.0.0.1:3003
+        }
 
-	# --- everything else -> Next.js dashboard -------------------------------
-	reverse_proxy 127.0.0.1:3000
+        # --- everything else -> Next.js dashboard -------------------------------
+        reverse_proxy 127.0.0.1:3000
 }
 
 # ---------------------------------------------------------------------------
 # Local-only variant (no domain, no TLS — reach via SSH tunnel):
 #   :8080 {
 #       bind 127.0.0.1
-#       handle_path /engine-socket/* { reverse_proxy 127.0.0.1:3003 }
+#       handle /engine-socket/* { reverse_proxy 127.0.0.1:3003 }
 #       reverse_proxy 127.0.0.1:3000
 #   }
 # Then:  ssh -L 8080:127.0.0.1:8080 user@server   and open http://localhost:8080

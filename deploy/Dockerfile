@@ -59,6 +59,7 @@ ENV NODE_ENV=production \
     PORT=3003 \
     REST_PORT=3004 \
     NEXT_APP_URL=http://127.0.0.1:3000 \
+    SOCK_PATH=/engine-socket/socket.io \
     CHROME_BINARY=/usr/bin/chromium \
     CHROMEDRIVER_PATH=/usr/bin/chromedriver
 
